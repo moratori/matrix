@@ -30,7 +30,8 @@ $(dfclass matrix nil
  (matrix-arr nil)
  (row        nil)
  (column     nil)
- (flag       nil))
+ (issquire   nil)
+ (check      nil))
 
 
 ;;; ここで配列を作ってしまうと
@@ -38,12 +39,13 @@ $(dfclass matrix nil
 ;;; ランダムアクセスの無い操作の方が多くなるなら
 ;;; それが行われるまで配列のオブジェクトは作らないで
 ;;; 高速化すべきではあるけど、どっちが多くなるかはわからないので
-;;; 作ることにしたけどやめるべきかも
+;;; 作ることにしたけどやめるべきかも. 間をとって遅延評価にした
+;;; 実際に配列をつかうメソッドが呼ばれたらそこでforceする
 (defconstructer matrix 
    (with-accessors ((matrix-lst matrix-of)) self
      (let ((row    (length matrix-lst))
            (column (length (car matrix-lst))))
-       (unless (flag-of self)
+       (unless (check-of self)
          (unless 
             (every 
              (lambda (x) 
@@ -52,7 +54,8 @@ $(dfclass matrix nil
        (setf 
           (row-of self)        row
           (column-of self)     column
-          (matrix-arr-of self) (make-array (list row column) :initial-contents matrix-lst)))))
+          (issquire-of self)   (= row column)
+          (matrix-arr-of self) (lazy (make-array (list row column) :initial-contents matrix-lst))))))
 
 
 
@@ -85,7 +88,9 @@ $(defgeneric elmt (matrix-obj row column)
   (:documentation "return element"))
 
 (defmethod elmt ((matrix matrix) row col)
-  (aref (matrix-arr-of matrix) (transform row) (transform col)))
+  (aref (force (matrix-arr-of matrix)) 
+        (transform row) 
+        (transform col)))
 
 
 $(defgeneric trans (matrix-obj)
@@ -106,16 +111,33 @@ $(defgeneric trans (matrix-obj)
 $(defgeneric row (matrix-obj row)
     (:documentation "return row vector"))
 
-;;; 行ベクトルの取得はcdrダウンした方が速いか?
-;;; 以下は配列を使って、定数時間で行にアクセスして
-;;; そっから要素(column)ぶんだけ集める感じになってるけど
+
 ;;; 列が相当でかいなら、配列は遅くなるし
 ;;; 行がでかいならcdrダウンには時間がかかるし
+;;; row <= column ならリストを下った方が速いな
+;;; ただ、row > column　で配列使う場合でも
+;;; force する時間も考慮するとどちらか一方に統一すべき?
+;;; ただどこで初めてforceされるかという問題もある
 (defmethod row ((matrix matrix) num)
-  (let ((matrix-arr (matrix-arr-of matrix)) 
-        (rowp (transform num)))
-    (loop for col from 0 upto (transform (column-of matrix)) collect (aref matrix-arr rowp col))
-    ))
+  (let1 index (transform num)
+   (if (<= (row-of matrix) (column-of matrix))
+     (nth index (matrix-of matrix))
+     (let1 arr (force (matrix-arr-of matrix)) 
+       (loop for col from 0 upto 
+             (transform (column-of matrix))
+             collect (aref arr index col))))))
+
+
+(defgeneric col (matrix-obj col)
+  (:documentation "return column vector"))
+
+
+(defmethod col ((matrix matrix) num)
+  (let  ((arr  (force (matrix-arr-of matrix))) 
+         (c (transform num)))
+        (loop for r from 0 
+              upto (transform (row-of matrix)) 
+              collect (aref arr r c))))
 
 
 $(defgeneric addablep (matrix-obj matrix-obj)
@@ -150,13 +172,14 @@ $(defgeneric multipliablep (matrix-obj matrix-obj)
   (= (column-of x) (row-of y)))
 
 
+#|
 (defmethod mult ((x matrix) (y matrix))
   (if (multipliablep x y)
     (let ((lst1 (matrix-of x)) (lst2 (matrix-of y)))
       
       )
     (error "invalid matrix type")))
-
+|#
 
 
 
@@ -167,4 +190,7 @@ $(defgeneric multipliablep (matrix-obj matrix-obj)
 
 (time (add (new matrix :matrix *lst*) (new matrix :matrix *lst*)))
 (show (add { (1 2 3) (4 5 6) (7 8 9) } { (0 -1 3) (6 7 -3) (2 -7 6) }))
-(print (row { (1 2 3) } 1))
+(time (row (new matrix :matrix *lst*) 1))
+(time (col (new matrix :matrix *lst*) 800)) ;; 0.35
+
+
