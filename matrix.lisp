@@ -57,7 +57,8 @@ $(dfclass matrix nil
           (issquire-of self)   (= row column)
           (matrix-arr-of self) (lazy (make-array (list row column) :initial-contents matrix-lst))))))
 
-
+;;; matrix オブジェクトを作る
+(defun mat (lst) (new matrix :matrix lst))
 
 ;;; row column を配列のindexに変換するだけ
 (defun transform (index) (1- index))
@@ -80,8 +81,8 @@ $(defgeneric formt (matrix-obj)
     (:documentation "show format"))
 
 (defmethod formt ((x matrix))
-  (format t "~A by ~A matrix~%" 
-          (row-of x) (column-of x)))
+  (format t "~A by ~A ~A matrix~%" 
+          (row-of x) (column-of x) (if (issquire-of x) "square" "")))
 
 
 $(defgeneric elmt (matrix-obj row column)
@@ -172,25 +173,34 @@ $(defgeneric multipliablep (matrix-obj matrix-obj)
   (= (column-of x) (row-of y)))
 
 
-#|
+$(defgeneric mult (matrix-obj matrix-obj)
+    (:documentation "multiplication matrix"))
+
 (defmethod mult ((x matrix) (y matrix))
   (if (multipliablep x y)
-    (let ((lst1 (matrix-of x)) (lst2 (matrix-of y)))
-      
-      )
+    (new matrix :matrix 
+         (let ((left (matrix-of x))
+          (col-cache 
+            (memoize 
+              (lambda (ins colnum) (col ins colnum)))))
+          (mapcar 
+            (lambda (each-row)
+              (loop for c from 1 upto (column-of y) collect
+                  (apply #'+ (mapcar 
+                    (lambda (x y)
+                      (* x y)) each-row (funcall col-cache y c))))) left)))
     (error "invalid matrix type")))
-|#
 
 
 
 
-
-(defvar *pr* (loop for x from 0 to 10000 collect x))
+(defvar *pr* (loop for x from 0 to 999 collect x))
 (defvar *lst* (loop repeat 1000 collect *pr*))
 
 (time (add (new matrix :matrix *lst*) (new matrix :matrix *lst*)))
 (show (add { (1 2 3) (4 5 6) (7 8 9) } { (0 -1 3) (6 7 -3) (2 -7 6) }))
 (time (row (new matrix :matrix *lst*) 1))
-(time (col (new matrix :matrix *lst*) 800)) ;; 0.35
 
+(defvar *mat* (mat *lst*))
 
+(time (mult *mat* *mat*)) ;; 18sec
