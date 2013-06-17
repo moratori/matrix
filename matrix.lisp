@@ -1,8 +1,12 @@
 
 (ql:quickload :macro.util.my)
+(ql:quickload :list.util.my)
 
 (defpackage matrix
-  (:use :cl :macro.util.my)
+  (:use 
+    :cl 
+    :macro.util.my
+    :list.util.my)
   (:export :#\{ :#\}))
 (in-package :matrix)
 
@@ -25,13 +29,13 @@
 
 (defconstant +COLUMN-SPACE+ 5)
 
-$(dfclass matrix nil
+$(define-class matrix nil
  (matrix     (error "List expressing the matrix is required"))
  (matrix-arr nil)
  (row        nil)
  (column     nil)
- (issquire   nil)
- (check      nil))
+ (issquare   nil)
+ (nonecheck    t))
 
 
 ;;; ここで配列を作ってしまうと
@@ -45,7 +49,7 @@ $(dfclass matrix nil
    (with-accessors ((matrix-lst matrix-of)) self
      (let ((row    (length matrix-lst))
            (column (length (car matrix-lst))))
-       (unless (check-of self)
+       (unless (nonecheck-of self)
          (unless 
             (every 
              (lambda (x) 
@@ -54,7 +58,7 @@ $(dfclass matrix nil
        (setf 
           (row-of self)        row
           (column-of self)     column
-          (issquire-of self)   (= row column)
+          (issquare-of self)   (= row column)
           (matrix-arr-of self) (lazy (make-array (list row column) :initial-contents matrix-lst))))))
 
 ;;; matrix オブジェクトを作る
@@ -62,6 +66,8 @@ $(dfclass matrix nil
 
 ;;; row column を配列のindexに変換するだけ
 (defun transform (index) (1- index))
+
+
 
 
 $(defgeneric show (matrix-obj)
@@ -77,12 +83,16 @@ $(defgeneric show (matrix-obj)
         (loop for each in matrix-lst do (format t template each))) matrix)
 
 
+
+
 $(defgeneric formt (matrix-obj)
     (:documentation "show format"))
 
 (defmethod formt ((x matrix))
   (format t "~A by ~A ~A matrix~%" 
-          (row-of x) (column-of x) (if (issquire-of x) "square" "")))
+          (row-of x) (column-of x) (if (issquare-of x) "square" "")))
+
+
 
 
 $(defgeneric elmt (matrix-obj row column)
@@ -92,6 +102,8 @@ $(defgeneric elmt (matrix-obj row column)
   (aref (force (matrix-arr-of matrix)) 
         (transform row) 
         (transform col)))
+
+
 
 
 $(defgeneric trans (matrix-obj)
@@ -107,6 +119,8 @@ $(defgeneric trans (matrix-obj)
                     (mapcar #'cdr lsts) 
                     (cons (mapcar #'car lsts) acc)))))
            (main (matrix-of matrix) nil)))))
+
+
 
 
 $(defgeneric row (matrix-obj row)
@@ -129,7 +143,9 @@ $(defgeneric row (matrix-obj row)
              collect (aref arr index col))))))
 
 
-(defgeneric col (matrix-obj col)
+
+
+$(defgeneric col (matrix-obj col)
   (:documentation "return column vector"))
 
 
@@ -141,6 +157,8 @@ $(defgeneric row (matrix-obj row)
               collect (aref arr r c))))
 
 
+
+
 $(defgeneric addablep (matrix-obj matrix-obj)
   (:documentation "addable x y"))
 
@@ -150,19 +168,23 @@ $(defgeneric addablep (matrix-obj matrix-obj)
     (= (column-of y) (column-of y))))
 
 
-$(defgeneric add (matrix-obj matrix-obj) 
-  (:documentation "add matrix"))
+;$(defgeneric add (matrix-obj matrix-obj) 
+;  (:documentation "add matrix"))
 
-(defmethod add ((x matrix) (y matrix))
+$(defmethod add ((x matrix) (y matrix) &optional (adder #'+))
   (if (addablep x y)
     (let ((lst1 (matrix-of x)) (lst2 (matrix-of y)))
       (new matrix :matrix 
         (maplist 
           (lambda (x y)
             (mapcar 
-              (lambda (x y) (+ x y)) 
+              (lambda (x y) (funcall adder x y)) 
                (car x) (car y))) lst1 lst2)))
     (error "same type matrix required")))
+
+
+
+$(defmethod sub ((x matrix) (y matrix)) (add x y #'-))
 
 
 
@@ -173,8 +195,8 @@ $(defgeneric multipliablep (matrix-obj matrix-obj)
   (= (column-of x) (row-of y)))
 
 
-$(defgeneric mult (matrix-obj matrix-obj)
-    (:documentation "multiplication matrix"))
+$(defgeneric mult (obj1 obj2)
+    (:documentation "multiplication"))
 
 (defmethod mult ((x matrix) (y matrix))
   (if (multipliablep x y)
@@ -186,21 +208,59 @@ $(defgeneric mult (matrix-obj matrix-obj)
           (mapcar 
             (lambda (each-row)
               (loop for c from 1 upto (column-of y) collect
-                  (apply #'+ (mapcar 
-                    (lambda (x y)
-                      (* x y)) each-row (funcall col-cache y c))))) left)))
+                  (apply #'+ 
+                    (mapcar 
+                      (lambda (x y)
+                        (* x y)) each-row (funcall col-cache y c))))) left)))
     (error "invalid matrix type")))
 
 
+(defmethod mult ((num number) (x matrix))
+  (new matrix :matrix
+       (mapcar 
+         (lambda (x)
+           (mapcar 
+             (lambda (x) (* x num)) x)) (matrix-of x))))
+
+(defmethod mult ((x matrix) (num number))
+  (mult num x))
 
 
-(defvar *pr* (loop for x from 0 to 999 collect x))
-(defvar *lst* (loop repeat 1000 collect *pr*))
+$(defgeneric diag (matrix-obj)
+   (:documentation "return diagonal"))
 
-(time (add (new matrix :matrix *lst*) (new matrix :matrix *lst*)))
-(show (add { (1 2 3) (4 5 6) (7 8 9) } { (0 -1 3) (6 7 -3) (2 -7 6) }))
-(time (row (new matrix :matrix *lst*) 1))
+(defmethod diag ((x matrix))
+  (unless (issquare-of x)
+    (error "square matrix requried"))
+    (let1 arr (force (matrix-arr-of x))
+     (loop 
+        for i from 0 upto (transform (row-of x)) 
+        collect (aref arr i i))))
 
+
+$(defgeneric submat (matrix-obj row col)
+   (:documentation "return sub matrix"))
+
+;; 効率悪いな
+(defmethod submat ((x matrix) row col)
+  (new matrix :matrix
+    (let ((tr (transform row))(tc (transform col)) ) 
+      (mapcar 
+        (lambda (x)
+          (rid-index x tc)) 
+        (rid-index (matrix-of x) tr)))))
+
+
+$(defgeneric meq (matrix-obj matrix-obj)
+    (:documentation "equalp"))
+
+(defmethod meq ((x matrix) (y matrix))
+  (equal (matrix-of x) (matrix-of y)))
+
+
+
+(defvar *pr* (loop for x from 0 upto 4999 collect x))
+(defvar *lst* (loop repeat 5000 collect *pr*))
 (defvar *mat* (mat *lst*))
 
-(time (mult *mat* *mat*)) ;; 18sec
+(time (submat *mat* 100 345))
