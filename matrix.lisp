@@ -61,6 +61,8 @@ $(define-class matrix nil
           (issquare-of self)   (= row column)
           (matrix-arr-of self) (lazy (make-array (list row column) :initial-contents matrix-lst))))))
 
+
+
 ;;; matrix オブジェクトを作る
 (defun mat (lst) (new matrix :matrix lst))
 
@@ -249,6 +251,16 @@ $(defgeneric submat (matrix-obj row col)
         (lambda (x)
           (rid-index x tc)) 
         (rid-index (matrix-of x) tr)))))
+
+
+$(defgeneric det (matrix-obj)
+   (:documentation "return determinant"))
+
+(defmethod det ((x matrix))
+  (unless (issquare-of x)
+    (error "square matrix required"))
+
+  )
 
 
 $(defgeneric meq (matrix-obj matrix-obj)
